@@ -1,15 +1,21 @@
 package com.kiven.kutils.file;
 
 import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
 import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Environment;
 import android.os.StatFs;
 import android.os.storage.StorageManager;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.kiven.kutils.logHelper.KLog;
 import com.kiven.kutils.tools.KString;
@@ -17,7 +23,10 @@ import com.kiven.kutils.tools.KString;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.FileNameMap;
 import java.net.URLConnection;
@@ -222,10 +231,9 @@ public class KFile {
      * @return 返回MIME类型
      * thx https://www.oschina.net/question/571282_223549
      */
+    @Nullable
     private static String getMimeType(String fileName) {
-        FileNameMap fileNameMap = URLConnection.getFileNameMap();
-        String type = fileNameMap.getContentTypeFor(fileName);
-        return type;
+        return URLConnection.getFileNameMap().getContentTypeFor(fileName);
     }
 
     /**
@@ -236,10 +244,7 @@ public class KFile {
      */
     public static boolean isVedioFile(String fileName) {
         String mimeType = getMimeType(fileName);
-        if (!TextUtils.isEmpty(fileName) && mimeType.contains("video/")) {
-            return true;
-        }
-        return false;
+        return !TextUtils.isEmpty(fileName) && mimeType != null && mimeType.contains("video/");
     }
 
     /**
@@ -251,10 +256,13 @@ public class KFile {
         }
 
         try {
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            FileOutputStream fileOutputStream = new FileOutputStream(file);
+            fileOutputStream.write(data);
+            fileOutputStream.close();
+            /*ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             outputStream.write(data);
             outputStream.flush();
-            outputStream.close();
+            outputStream.close();*/
         } catch (Exception e) {
             KLog.e(e);
             return false;
@@ -302,5 +310,39 @@ public class KFile {
         }
 
         return fileName;
+    }
+
+    public static String savePngBitmap(@NonNull Context context, @NonNull Bitmap source, String title, String description) {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.TITLE, title);
+        values.put(MediaStore.Images.Media.DESCRIPTION, description);
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+
+        Uri url = null;
+        String stringUrl = null;    /* value to be returned */
+        ContentResolver cr = context.getContentResolver();
+
+        try {
+            url = cr.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+
+            OutputStream imageOut = cr.openOutputStream(url);
+            try {
+                source.compress(Bitmap.CompressFormat.PNG, 50, imageOut);
+            } finally {
+                imageOut.close();
+            }
+        } catch (Exception e) {
+//            Log.e(TAG, "Failed to insert image", e);
+            if (url != null) {
+                cr.delete(url, null, null);
+                url = null;
+            }
+        }
+
+        if (url != null) {
+            stringUrl = url.toString();
+        }
+
+        return stringUrl;
     }
 }
